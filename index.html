@@ -3,58 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Live Gesture Puzzle - Final</title>
+    <title>Live Gesture Puzzle</title>
     <style>
         :root { --accent: #adff2f; --bg: #0b0b0b; }
-        body { 
-            margin: 0; background: var(--bg); color: white; 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            overflow: hidden; height: 100vh; display: flex; flex-direction: column; 
-        }
-        
-        /* Container that respects mobile notches */
-        .container { 
-            position: relative; flex-grow: 1; width: 100vw; background: #000; 
-            overflow: hidden; display: flex; justify-content: center; align-items: center; 
-        }
-
+        body { margin: 0; background: var(--bg); color: white; font-family: sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+        .container { position: relative; flex-grow: 1; width: 100vw; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; }
         #webcam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
         #output_canvas { width: 100%; height: 100%; object-fit: contain; }
         
-        #start-screen { 
-            position: absolute; inset: 0; background: var(--bg); z-index: 1000; 
-            display: flex; flex-direction: column; justify-content: center; align-items: center; 
-        }
-
-        #init-btn { 
-            background: var(--accent); color: black; border: none; padding: 18px 45px; 
-            cursor: pointer; font-weight: bold; border-radius: 50px; font-size: 1.1rem;
-            box-shadow: 0 4px 15px rgba(173, 255, 47, 0.3);
-        }
-
-        #timer-container { 
-            position: absolute; top: env(safe-area-inset-top, 20px); 
-            left: 50%; transform: translateX(-50%); 
-            background: rgba(0,0,0,0.8); padding: 8px 20px; border-radius: 30px; 
-            border: 1px solid #333; z-index: 10;
-        }
-
-        .instruction-box { 
-            position: absolute; bottom: env(safe-area-inset-bottom, 20px); 
-            right: 15px; background: rgba(0,0,0,0.85); padding: 12px; 
-            border-radius: 10px; width: 160px; border-left: 4px solid var(--accent); 
-            font-size: 0.75rem; pointer-events: none; z-index: 10;
-        }
-
-        #flash { position: absolute; inset: 0; background: white; opacity: 0; pointer-events: none; transition: opacity 0.1s; z-index: 5; }
+        #start-screen { position: absolute; inset: 0; background: var(--bg); z-index: 1000; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+        #init-btn { background: var(--accent); color: black; border: none; padding: 18px 45px; cursor: pointer; font-weight: bold; border-radius: 50px; font-size: 1.1rem; }
+        
+        #timer-container { position: absolute; top: env(safe-area-inset-top, 20px); left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); padding: 8px 20px; border-radius: 30px; border: 1px solid #333; z-index: 10; }
+        #timer { color: var(--accent); font-family: monospace; font-size: 1.2rem; }
+        
+        .instruction-box { position: absolute; bottom: env(safe-area-inset-bottom, 20px); right: 15px; background: rgba(0,0,0,0.85); padding: 12px; border-radius: 10px; width: 160px; border-left: 4px solid var(--accent); font-size: 0.75rem; z-index: 10; }
+        #flash { position: absolute; inset: 0; background: white; opacity: 0; pointer-events: none; z-index: 5; }
         #leaderboard { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #111; padding: 30px; border: 2px solid var(--accent); display: none; text-align: center; border-radius: 15px; z-index: 1001; width: 80%; }
     </style>
 </head>
 <body>
 
     <div id="start-screen">
-        <h1 style="color: var(--accent); letter-spacing: 2px;">LIVE PUZZLE</h1>
-        <p style="color: #666; margin-bottom: 25px;">Use HTTPS & stay in bright light</p>
+        <h1 style="color: var(--accent);">LIVE PUZZLE</h1>
+        <p style="color: #666; margin-bottom: 25px;">Ensure you are on HTTPS</p>
         <button id="init-btn" onclick="initGame()">START SYSTEM</button>
     </div>
 
@@ -62,21 +34,18 @@
         <video id="webcam" autoplay playsinline muted></video>
         <canvas id="output_canvas"></canvas>
         <div id="flash"></div>
-
-        <div id="timer-container">
-            <div id="timer" style="color: var(--accent); font-family: monospace; font-size: 1.2rem;">00:00.00</div>
-        </div>
+        <div id="timer-container"><div id="timer">00:00.00</div></div>
 
         <div class="instruction-box">
-            <h4 id="phase-title" style="margin:0; color: var(--accent); font-size: 0.8rem;">PHASE 1: CAPTURE</h4>
-            <p id="p-step-1" style="margin:5px 0 0 0;">1. Frame with 2 hands</p>
-            <p id="p-step-2" style="margin:2px 0 0 0;">2. Pinch to SNAP</p>
+            <h4 id="phase-title" style="margin:0; color: var(--accent);">PHASE 1: CAPTURE</h4>
+            <p style="margin:5px 0 0 0;">1. Frame with 2 hands</p>
+            <p style="margin:2px 0 0 0;">2. Pinch both to SNAP</p>
         </div>
 
         <div id="leaderboard">
-            <h2 style="color: var(--accent)">SOLVED</h2>
-            <div id="score-list" style="margin: 20px 0; font-size: 1.2rem;"></div>
-            <button onclick="location.reload()">REPLAY</button>
+            <h2 style="color: var(--accent)">MISSION COMPLETE</h2>
+            <div id="score-list" style="margin: 20px 0;"></div>
+            <button onclick="location.reload()">NEW GAME</button>
         </div>
     </div>
 
