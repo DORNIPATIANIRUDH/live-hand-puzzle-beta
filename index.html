@@ -3,36 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>AI Gesture Puzzle - Mobile Global</title>
+    <title>Live Gesture Puzzle - Final</title>
     <style>
         :root { --accent: #adff2f; --bg: #0b0b0b; }
-        body { margin: 0; background: var(--bg); display: flex; flex-direction: column; height: 100vh; color: white; font-family: sans-serif; overflow: hidden; }
+        body { 
+            margin: 0; background: var(--bg); color: white; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden; height: 100vh; display: flex; flex-direction: column; 
+        }
         
-        /* Responsive Game Container */
-        .container { position: relative; flex-grow: 1; width: 100vw; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; }
-        #webcam { position: absolute; width: 1px; height: 1px; opacity: 0; }
-        #output_canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
+        /* Container that respects mobile notches */
+        .container { 
+            position: relative; flex-grow: 1; width: 100vw; background: #000; 
+            overflow: hidden; display: flex; justify-content: center; align-items: center; 
+        }
+
+        #webcam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+        #output_canvas { width: 100%; height: 100%; object-fit: contain; }
         
-        /* Dynamic UI for any screen size */
-        .instruction-box { position: absolute; bottom: env(safe-area-inset-bottom, 20px); right: 10px; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 8px; width: 150px; border-left: 3px solid var(--accent); z-index: 10; font-size: 0.7rem; }
-        #timer-container { position: absolute; top: env(safe-area-inset-top, 10px); left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); padding: 5px 15px; border-radius: 20px; z-index: 10; border: 1px solid #333; }
-        #timer { color: var(--accent); font-family: monospace; font-size: 1rem; }
-        
-        #start-screen { position: absolute; inset: 0; background: var(--bg); z-index: 1000; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px; }
-        #leaderboard { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #111; padding: 25px; border: 2px solid var(--accent); display: none; text-align: center; border-radius: 15px; z-index: 1001; width: 80%; }
-        
-        button { background: var(--accent); color: black; border: none; padding: 15px 30px; cursor: pointer; font-weight: bold; border-radius: 5px; font-size: 1rem; }
-        button:disabled { background: #555; cursor: not-allowed; }
-        #flash { position: absolute; inset: 0; background: white; opacity: 0; pointer-events: none; z-index: 5; }
+        #start-screen { 
+            position: absolute; inset: 0; background: var(--bg); z-index: 1000; 
+            display: flex; flex-direction: column; justify-content: center; align-items: center; 
+        }
+
+        #init-btn { 
+            background: var(--accent); color: black; border: none; padding: 18px 45px; 
+            cursor: pointer; font-weight: bold; border-radius: 50px; font-size: 1.1rem;
+            box-shadow: 0 4px 15px rgba(173, 255, 47, 0.3);
+        }
+
+        #timer-container { 
+            position: absolute; top: env(safe-area-inset-top, 20px); 
+            left: 50%; transform: translateX(-50%); 
+            background: rgba(0,0,0,0.8); padding: 8px 20px; border-radius: 30px; 
+            border: 1px solid #333; z-index: 10;
+        }
+
+        .instruction-box { 
+            position: absolute; bottom: env(safe-area-inset-bottom, 20px); 
+            right: 15px; background: rgba(0,0,0,0.85); padding: 12px; 
+            border-radius: 10px; width: 160px; border-left: 4px solid var(--accent); 
+            font-size: 0.75rem; pointer-events: none; z-index: 10;
+        }
+
+        #flash { position: absolute; inset: 0; background: white; opacity: 0; pointer-events: none; transition: opacity 0.1s; z-index: 5; }
+        #leaderboard { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #111; padding: 30px; border: 2px solid var(--accent); display: none; text-align: center; border-radius: 15px; z-index: 1001; width: 80%; }
     </style>
 </head>
 <body>
 
     <div id="start-screen">
-        <h1 style="color: var(--accent);">AI LIVE PUZZLE</h1>
-        <p id="loading-msg" style="color: #666; margin-bottom: 20px;">Ensure you are on HTTPS</p>
+        <h1 style="color: var(--accent); letter-spacing: 2px;">LIVE PUZZLE</h1>
+        <p style="color: #666; margin-bottom: 25px;">Use HTTPS & stay in bright light</p>
         <button id="init-btn" onclick="initGame()">START SYSTEM</button>
     </div>
 
@@ -42,24 +64,25 @@
         <div id="flash"></div>
 
         <div id="timer-container">
-            <div id="timer">00:00.00</div>
+            <div id="timer" style="color: var(--accent); font-family: monospace; font-size: 1.2rem;">00:00.00</div>
         </div>
 
         <div class="instruction-box">
-            <b id="phase-title" style="color: var(--accent);">PHASE 1: CAPTURE</b>
-            <div id="p-step-1">Frame with hands</div>
-            <div id="p-step-2">Pinch to SNAP</div>
+            <h4 id="phase-title" style="margin:0; color: var(--accent); font-size: 0.8rem;">PHASE 1: CAPTURE</h4>
+            <p id="p-step-1" style="margin:5px 0 0 0;">1. Frame with 2 hands</p>
+            <p id="p-step-2" style="margin:2px 0 0 0;">2. Pinch to SNAP</p>
         </div>
 
         <div id="leaderboard">
-            <h2 style="color: var(--accent)">SOLVED!</h2>
-            <div id="score-list" style="margin: 15px 0;"></div>
+            <h2 style="color: var(--accent)">SOLVED</h2>
+            <div id="score-list" style="margin: 20px 0; font-size: 1.2rem;"></div>
             <button onclick="location.reload()">REPLAY</button>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
