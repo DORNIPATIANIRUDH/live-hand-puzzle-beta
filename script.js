@@ -9,27 +9,20 @@ let isCaptured = false, isCountingDown = false, lockedRect = null;
 let countdownValue = 3, countdownTimer = null, startTime, timerInterval;
 const rows = 3, cols = 3;
 
-// --- Stable Sound Helper ---
-function playSound(f, t, d) {
-    if (!audioCtx || audioCtx.state !== 'running') return;
-    const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
-    o.type = f; o.frequency.setValueAtTime(t, audioCtx.currentTime);
-    g.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + d);
-    o.connect(g); g.connect(audioCtx.destination);
-    o.start(); o.stop(audioCtx.currentTime + d);
-}
+// --- Performance Optimized Hands ---
+const hands = new Hands({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+
+hands.setOptions({
+    maxNumHands: 2,
+    modelComplexity: 0, // CRITICAL: 0 makes it work on Android/iOS without lag
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
+});
 
 const getDist = (p1, p2) => Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
 const lerp = (a, b, t) => a + (b - a) * t;
-
-const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-hands.setOptions({ 
-    maxNumHands: 2, 
-    modelComplexity: 0, // 0 = Fast (Phones), 1 = Accurate (Desktop)
-    minDetectionConfidence: 0.5, 
-    minTrackingConfidence: 0.5 
-});
 
 function snapPhoto(rect) {
     isCaptured = true;
@@ -41,7 +34,6 @@ function snapPhoto(rect) {
         const r = Math.floor(i / cols), c = i % cols;
         const temp = document.createElement('canvas');
         temp.width = pW; temp.height = pH;
-        // Correct crop for mirrored mobile view
         const sX = (videoElement.videoWidth - (rect.x + rect.w)) + (c * pW);
         temp.getContext('2d').drawImage(videoElement, sX, rect.y + (r * pH), pW, pH, 0, 0, pW, pH);
         pieces.push({ img: temp, currentSlot: indices[i], targetSlot: i, x: slots[indices[i]].x, y: slots[indices[i]].y, w: pW, h: pH });
@@ -55,24 +47,34 @@ function snapPhoto(rect) {
 }
 
 function onResults(results) {
+    // 1. Clear and Mirror
     canvasCtx.save();
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
     canvasCtx.translate(canvasElement.width, 0); canvasCtx.scale(-1, 1);
+    
+    // 2. Draw Background Video
     canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
     if (results.multiHandLandmarks) {
         let allX = [], allY = [], pinches = 0;
-        for (const h of results.multiHandLandmarks) {
-            if (getDist(h[4], h[8]) < 0.07) pinches++; // Wider pinch for mobile
-            h.forEach(p => { allX.push(p.x * canvasElement.width); allY.push(p.y * canvasElement.height); });
+        
+        for (const landmarks of results.multiHandLandmarks) {
+            // Draw skeleton landmarks so we know it's working
+            drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#adff2f', lineWidth: 2});
+            drawLandmarks(canvasCtx, landmarks, {color: '#ffffff', lineWidth: 1, radius: 2});
+
+            const t = landmarks[4], i = landmarks[8];
+            if (getDist(t, i) < 0.08) pinches++; 
+            landmarks.forEach(p => { allX.push(p.x * canvasElement.width); allY.push(p.y * canvasElement.height); });
         }
 
+        // Logic: Framing
         if (!isCaptured && results.multiHandLandmarks.length === 2 && !isCountingDown) {
             lockedRect = { x: Math.min(...allX), y: Math.min(...allY), w: Math.max(...allX)-Math.min(...allX), h: Math.max(...allY)-Math.min(...allY) };
             if (pinches === 2) {
                 isCountingDown = true; countdownValue = 3;
                 countdownTimer = setInterval(() => {
-                    countdownValue--; playSound('sine', 600, 0.1);
+                    countdownValue--;
                     if (countdownValue <= 0) {
                         clearInterval(countdownTimer); isCountingDown = false;
                         flashElement.style.opacity='1'; setTimeout(()=>flashElement.style.opacity='0',100);
@@ -81,24 +83,23 @@ function onResults(results) {
                 }, 1000);
             }
         }
-        if (lockedRect && !isCaptured) {
-            canvasCtx.strokeStyle = "#adff2f"; canvasCtx.lineWidth = 3;
-            canvasCtx.strokeRect(lockedRect.x, lockedRect.y, lockedRect.w, lockedRect.h);
-        }
 
+        // Logic: Solve
         if (isCaptured && results.multiHandLandmarks.length > 0) {
             const h = results.multiHandLandmarks[0];
             const cX = h[8].x * canvasElement.width, cY = h[8].y * canvasElement.height;
-            if (getDist(h[4], h[8]) < 0.07) {
+            if (getDist(h[4], h[8]) < 0.08) {
                 if (!grabbedPiece) grabbedPiece = pieces.find(p => cX > p.x && cX < p.x + p.w && cY > p.y && cY < p.y + p.h);
-                if (grabbedPiece) { grabbedPiece.x = lerp(grabbedPiece.x, cX - grabbedPiece.w/2, 0.4); grabbedPiece.y = lerp(grabbedPiece.y, cY - grabbedPiece.h/2, 0.4); }
+                if (grabbedPiece) { 
+                    grabbedPiece.x = lerp(grabbedPiece.x, cX - grabbedPiece.w/2, 0.4); 
+                    grabbedPiece.y = lerp(grabbedPiece.y, cY - grabbedPiece.h/2, 0.4); 
+                }
             } else if (grabbedPiece) {
                 const near = slots.find(s => getDist({x: grabbedPiece.x+grabbedPiece.w/2, y: grabbedPiece.y+grabbedPiece.h/2}, {x: s.x+grabbedPiece.w/2, y: s.y+grabbedPiece.h/2}) < grabbedPiece.w/1.2);
                 if (near) {
                     const other = pieces.find(p => p.currentSlot === near.index);
                     const oldIdx = grabbedPiece.currentSlot;
                     grabbedPiece.currentSlot = near.index; if (other) other.currentSlot = oldIdx;
-                    playSound('triangle', 400, 0.1);
                 }
                 pieces.forEach(p => { p.x = slots[p.currentSlot].x; p.y = slots[p.currentSlot].y; });
                 grabbedPiece = null;
@@ -110,19 +111,30 @@ function onResults(results) {
             }
         }
     }
-    pieces.forEach(p => { canvasCtx.drawImage(p.img, p.x, p.y); canvasCtx.strokeRect(p.x, p.y, p.w, p.h); });
+
+    // Draw Puzzle Pieces
+    pieces.forEach(p => { 
+        canvasCtx.drawImage(p.img, p.x, p.y); 
+        canvasCtx.strokeStyle = "rgba(255,255,255,0.3)";
+        canvasCtx.strokeRect(p.x, p.y, p.w, p.h); 
+    });
+    
+    // Draw framing box
+    if (lockedRect && !isCaptured) {
+        canvasCtx.strokeStyle = "#adff2f"; canvasCtx.lineWidth = 3;
+        canvasCtx.strokeRect(lockedRect.x, lockedRect.y, lockedRect.w, lockedRect.h);
+    }
+
     canvasCtx.restore();
 }
 
 hands.onResults(onResults);
 
 async function initGame() {
-    const btn = document.getElementById('init-btn');
-    if (typeof Camera === 'undefined') { alert("AI not ready yet..."); return; }
+    if (typeof Camera === 'undefined') { alert("AI Engine still loading..."); return; }
     
     try {
-        btn.disabled = true; btn.innerText = "STARTING...";
-        // Audio must start on a user tap for mobile
+        // Essential for mobile audio/video
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         await audioCtx.resume();
 
@@ -130,12 +142,15 @@ async function initGame() {
 
         const camera = new Camera(videoElement, {
             onFrame: async () => {
-                canvasElement.width = videoElement.videoWidth;
-                canvasElement.height = videoElement.videoHeight;
-                await hands.send({ image: videoElement });
+                // FORCE RESIZE: If video resolution changes or starts late
+                if (videoElement.videoWidth > 0) {
+                    canvasElement.width = videoElement.videoWidth;
+                    canvasElement.height = videoElement.videoHeight;
+                    await hands.send({ image: videoElement });
+                }
             },
-            width: 640, height: 480 // Stable resolution for any phone
+            width: 640, height: 480 // Stable mobile resolution
         });
         camera.start();
-    } catch (e) { alert("Camera Error: " + e); btn.disabled = false; }
+    } catch (e) { alert("Init Error: " + e); }
 }
