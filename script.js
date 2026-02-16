@@ -4,9 +4,16 @@ const canvasCtx = canvasElement.getContext('2d');
 const timerDisplay = document.getElementById('timer');
 const flashElement = document.getElementById('flash');
 
-// --- Audio Logic ---
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+// --- Audio Context Fix for Mobile ---
+let audioCtx;
+const sfx = { 
+    tick: () => playSound('sine', 800, 0.1), 
+    snap: () => playSound('square', 200, 0.4), 
+    swap: () => playSound('triangle', 500, 0.2)
+};
+
 function playSound(f, t, d) {
+    if(!audioCtx) return;
     const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
     o.type = f; o.frequency.setValueAtTime(t, audioCtx.currentTime);
     g.gain.setValueAtTime(0.1, audioCtx.currentTime);
@@ -14,14 +21,8 @@ function playSound(f, t, d) {
     o.connect(g); g.connect(audioCtx.destination);
     o.start(); o.stop(audioCtx.currentTime + d);
 }
-const sfx = { 
-    tick: () => playSound('sine', 800, 0.1), 
-    snap: () => playSound('square', 200, 0.4), 
-    swap: () => playSound('triangle', 500, 0.2),
-    reset: () => playSound('sawtooth', 150, 0.3)
-};
 
-// --- Game Variables ---
+// --- Game Logic ---
 let pieces = [], slots = [], grabbedPiece = null;
 let isCaptured = false, isCountingDown = false, lockedRect = null;
 let countdownValue = 3, countdownTimer = null, startTime, timerInterval, resetCounter = 0;
@@ -42,13 +43,13 @@ function snapPhoto(rect) {
     isCaptured = true;
     initGrid(rect);
     const pW = rect.w / cols; const pH = rect.h / rows;
-    
-    // Create & Shuffle
     let indices = [...Array(9).keys()].sort(() => Math.random() - 0.5);
+    
     for (let i = 0; i < 9; i++) {
         const r = Math.floor(i / cols); const c = i % cols;
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = pW; tempCanvas.height = pH;
+        // Adjusted crop logic for mirrored canvas
         const sX = (videoElement.videoWidth - (rect.x + rect.w)) + (c * pW);
         tempCanvas.getContext('2d').drawImage(videoElement, sX, rect.y + (r * pH), pW, pH, 0, 0, pW, pH);
         
@@ -58,11 +59,7 @@ function snapPhoto(rect) {
         });
     }
 
-    // Update UI
     document.getElementById('phase-title').innerText = "Phase 2: Solve";
-    document.getElementById('p-step-1').innerHTML = "1. Pinch to Pick Up";
-    document.getElementById('p-step-2').innerHTML = "2. Drop to Swap Blocks";
-    
     startTime = Date.now();
     timerInterval = setInterval(() => {
         const ms = Date.now() - startTime;
@@ -80,20 +77,18 @@ function onResults(results) {
         let allX = [], allY = [], pinches = 0, fist = false;
         for (const landmarks of results.multiHandLandmarks) {
             const t = landmarks[4], i = landmarks[8];
-            if (getDist(t, i) < 0.05) pinches++;
+            // Mobile sensitivity: 0.06 is better than 0.05
+            if (getDist(t, i) < 0.06) pinches++;
             if (landmarks[8].y > landmarks[6].y && landmarks[12].y > landmarks[10].y) fist = true;
             landmarks.forEach(p => { allX.push(p.x * canvasElement.width); allY.push(p.y * canvasElement.height); });
-            drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#adff2f', lineWidth: 2 });
         }
 
-        // --- Logic: Reset ---
         if (fist && isCaptured) {
             resetCounter++;
             if (resetCounter > 40) location.reload();
             canvasCtx.fillStyle = "#adff2f"; canvasCtx.fillRect(0, canvasElement.height-10, (resetCounter/40)*canvasElement.width, 10);
         } else resetCounter = 0;
 
-        // --- Logic: Framing ---
         if (!isCaptured) {
             if (results.multiHandLandmarks.length === 2 && !isCountingDown) {
                 lockedRect = { x: Math.min(...allX), y: Math.min(...allY), w: Math.max(...allX)-Math.min(...allX), h: Math.max(...allY)-Math.min(...allY) };
@@ -111,25 +106,19 @@ function onResults(results) {
             }
             if (lockedRect) {
                 canvasCtx.strokeStyle = "#adff2f"; canvasCtx.lineWidth = 4;
-                if (!isCountingDown) canvasCtx.setLineDash([10, 5]); else canvasCtx.setLineDash([]);
+                if (isCountingDown) canvasCtx.setLineDash([]); else canvasCtx.setLineDash([10, 5]);
                 canvasCtx.strokeRect(lockedRect.x, lockedRect.y, lockedRect.w, lockedRect.h);
-            }
-            if (isCountingDown) {
-                canvasCtx.save(); canvasCtx.translate(canvasElement.width,0); canvasCtx.scale(-1,1);
-                canvasCtx.fillStyle = "#adff2f"; canvasCtx.font = "bold 100px sans-serif"; canvasCtx.textAlign="center";
-                canvasCtx.fillText(countdownValue, canvasElement.width/2, canvasElement.height/2); canvasCtx.restore();
             }
         }
 
-        // --- Logic: Solve/Swap ---
         if (isCaptured && results.multiHandLandmarks.length > 0) {
             const h = results.multiHandLandmarks[0];
             const cX = h[8].x * canvasElement.width; const cY = h[8].y * canvasElement.height;
-            if (getDist(h[4], h[8]) < 0.05) {
+            if (getDist(h[4], h[8]) < 0.06) {
                 if (!grabbedPiece) grabbedPiece = pieces.find(p => cX > p.x && cX < p.x + p.w && cY > p.y && cY < p.y + p.h);
                 if (grabbedPiece) { 
-                    grabbedPiece.x = lerp(grabbedPiece.x, cX - grabbedPiece.w/2, 0.3); 
-                    grabbedPiece.y = lerp(grabbedPiece.y, cY - grabbedPiece.h/2, 0.3); 
+                    grabbedPiece.x = lerp(grabbedPiece.x, cX - grabbedPiece.w/2, 0.4); 
+                    grabbedPiece.y = lerp(grabbedPiece.y, cY - grabbedPiece.h/2, 0.4); 
                 }
             } else if (grabbedPiece) {
                 const near = slots.find(s => getDist({x: grabbedPiece.x+grabbedPiece.w/2, y: grabbedPiece.y+grabbedPiece.h/2}, {x: s.x+grabbedPiece.w/2, y: s.y+grabbedPiece.h/2}) < grabbedPiece.w/1.5);
@@ -152,21 +141,34 @@ function onResults(results) {
     }
     pieces.forEach(p => { 
         canvasCtx.drawImage(p.img, p.x, p.y);
-        canvasCtx.strokeStyle = "white"; canvasCtx.lineWidth = 2; canvasCtx.strokeRect(p.x, p.y, p.w, p.h);
+        canvasCtx.strokeStyle = "rgba(255,255,255,0.5)"; canvasCtx.strokeRect(p.x, p.y, p.w, p.h);
     });
     canvasCtx.restore();
 }
 
 const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
 hands.onResults(onResults);
 
 function initGame() {
-    audioCtx.resume();
+    if (typeof Camera === 'undefined') {
+        alert("AI Libraries are still loading. Please wait 3 seconds and try again!");
+        return;
+    }
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     document.getElementById('start-screen').style.display = 'none';
-    const camera = new Camera(videoElement, { onFrame: async () => {
-        canvasElement.width = videoElement.videoWidth; canvasElement.height = videoElement.videoHeight;
-        await hands.send({ image: videoElement });
-    }});
+
+    const camera = new Camera(videoElement, {
+        onFrame: async () => {
+            // Adaptive scaling for mobile aspect ratios
+            if (canvasElement.width !== videoElement.videoWidth) {
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+            }
+            await hands.send({ image: videoElement });
+        },
+        width: window.innerWidth < 768 ? 640 : 1280,
+        height: window.innerWidth < 768 ? 480 : 720
+    });
     camera.start();
 }
